@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Baza Korisnika</title>
+</head>
+<body>
+
+    <div id="login-sekcija">
+        <h3>Prijava</h3>
+        <input type="text" id="email-prijava" placeholder="Unesite email">
+        <button onclick="prijaviSe()">Prijavi se</button>
+    </div>
+
+    <div id="glavno" style="display:none;">
+        <h2 id="naslov"></h2>
+        <button onclick="location.reload()">Odjava</button>
+        <hr>
+
+        <div id="admin-panel" style="display:none; border: 1px solid black; padding: 10px;">
+            <h4>Dodaj novu osobu </h4>
+            <input type="text" id="n-ime" placeholder="Ime i prezime">
+            <input type="text" id="n-email" placeholder="Email">
+            <input type="text" id="n-grad" placeholder="Grad">
+            <br><br>
+            <button onclick="spremi('korisnik')">Dodaj Korisnika</button>
+            <button onclick="spremi('admin')">Dodaj Administratora</button>
+            <button id="gumb-update" onclick="spremiUpdate()" style="display:none; background: yellow;">Spremi PROMJENE</button>
+        </div>
+
+        <h3>Popis iz baze:</h3>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Ime</th>
+                    <th>Email</th>
+                    <th>Grad</th>
+                    <th>JSON Meta</th>
+                </tr>
+            </thead>
+            <tbody id="tablica-body"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let jeAdmin = false;
+
+        function prijaviSe() {
+            const email = document.getElementById('email-prijava').value;
+            
+            fetch(`http://localhost:3000/provjeri-korisnika?email=${email}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("Korisnik nije u bazi!");
+                    } else {
+                        document.getElementById('login-sekcija').style.display = 'none';
+                        document.getElementById('glavno').style.display = 'block';
+                        
+                        jeAdmin = data.je_admin; 
+                        document.getElementById('naslov').innerText = "Korisnik: " + data.ime_prezime;
+
+                        if (jeAdmin) {
+                            document.getElementById('admin-panel').style.display = 'block';
+                        }
+                        prikaziTablicu();
+                    }
+                });
+        }
+
+        function prikaziTablicu() {
+            fetch(`http://localhost:3000/korisnici?uloga=${jeAdmin}`)
+                .then(res => res.json())
+                .then(lista => {
+                    const tbody = document.getElementById('tablica-body');
+                    const head = document.querySelector('thead tr');
+                    
+                    head.innerHTML = `<th>ID</th><th>Ime</th><th>Email</th><th>Grad</th>`;
+                    if (jeAdmin) head.innerHTML += `<th>Meta-podaci (Samo Admin)</th><th>Akcija</th>`;
+
+                    tbody.innerHTML = lista.map(k => {
+                        let redak = `<td>${k.id}</td><td>${k.ime_prezime}</td><td>${k.email}</td><td>${k.grad}</td>`;
+                        if (jeAdmin) {
+                            redak += `<td>${JSON.stringify(k.dodatni_info)}</td>`;
+                            redak += `<td>
+                                        <button onclick="obrisiKorisnika(${k.id})" style="color:red;">Obriši</button>
+                                        <button onclick="urediKorisnika(${k.id}, '${k.ime_prezime}', '${k.email}', '${k.grad}')">Uredi</button>
+                                    </td>`;
+                        }
+                        return `<tr>${redak}</tr>`;
+                    }).join('');
+                });
+        }
+
+        function spremi(tip) {
+            const podaci = {
+                ime: document.getElementById('n-ime').value,
+                email: document.getElementById('n-email').value,
+                grad: document.getElementById('n-grad').value
+            };
+            const ruta = (tip === 'admin') ? '/dodaj-admina' : '/dodaj';
+
+            fetch(`http://localhost:3000${ruta}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(podaci)
+            }).then(() => {
+                alert("Uspješno spremljeno u bazu!");
+                document.getElementById('n-ime').value = '';
+                document.getElementById('n-email').value = '';
+                document.getElementById('n-grad').value = '';
+
+                prikaziTablicu(); 
+            });
+        }
+
+        function obrisiKorisnika(id) {
+            if(confirm("Sigurno želiš obrisati korisnika ID: " + id + "?")) {
+                fetch(`http://localhost:3000/obrisi/${id}`, { method: 'DELETE' })
+                    .then(() => {
+                        alert("Obrisano!");
+                        prikaziTablicu();
+                    });
+            }
+        }
+        let trenutniIdZaUredivanje = null; 
+
+        function urediKorisnika(id, ime, email, grad) {
+            trenutniIdZaUredivanje = id; 
+            
+            document.getElementById('n-ime').value = ime;
+            document.getElementById('n-email').value = email;
+            document.getElementById('n-grad').value = grad;
+
+            document.querySelector('#admin-panel h4').innerText = "Uređivanje korisnika ID: " + id;
+            
+            document.getElementById('gumb-update').style.display = 'inline';
+        }
+
+        function spremiUpdate() {
+            const podaci = {
+                ime: document.getElementById('n-ime').value,
+                email: document.getElementById('n-email').value,
+                grad: document.getElementById('n-grad').value
+            };
+
+            fetch(`http://localhost:3000/azuriraj/${trenutniIdZaUredivanje}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(podaci)
+            }).then(() => {
+                alert("Promjene spremljene!");
+                resetirajFormu();
+                prikaziTablicu();
+            });
+        }
+
+        function resetirajFormu() {
+            trenutniIdZaUredivanje = null;
+            document.getElementById('n-ime').value = '';
+            document.getElementById('n-email').value = '';
+            document.getElementById('n-grad').value = '';
+            document.querySelector('#admin-panel h4').innerText = "Dodaj novu osobu";
+            document.getElementById('gumb-update').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
